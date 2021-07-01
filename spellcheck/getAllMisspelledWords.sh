@@ -3,6 +3,7 @@
 #crysman (copyleft) 2020-2021
 #
 #changelog:
+# - 2021-07-01a some czech diacritics chars were missing in grep, added
 # - 2021-07-01  minor tweaks, englishized!
 # - 2021-01-17a dump via elinks instead of lynx, addWord.sh added, search improved, colored output improved, local build support added
 # - 2021-01-17  some checking added, colored output, custom dictionary
@@ -84,7 +85,7 @@ _info "finding and writing-out misspelled words..."
 for f in `find "./${DOMAIN}${PORT}" -type f`; do cat "$f" | aspell -l cs list; done | sort | uniq | aspell -l en list | aspell --master="./$CUSTOMDICT" -l cs list | tee ${TMPOUTFILE} &&
 
 _info "printing-out where the words are located..." &&
-for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep"; grep --color=always -RI "[^a-zA-Zěščřžýáíéůúďň]$WORD[^a-zA-Zěščřžýáíéůúďň]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}"; echo ""; let "MISSPELLEDNO=MISSPELLEDNO+1"; done &&
+for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep"; grep --color=always -RI "[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]$WORD[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}"; echo ""; let "MISSPELLEDNO=MISSPELLEDNO+1"; done &&
 
 #go back to original dir
 cd - >/dev/null &&
