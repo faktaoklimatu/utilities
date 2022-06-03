@@ -3,6 +3,7 @@
 #crysman (copyleft) 2020
 #
 #changelog:
+# - 2022-06-04  tmux usage added (split-window with elinks to have a better workflow)
 # - 2022-06-03  interactive mode added (revising the words and ad-hoc adding to dict), script arguments fine-tuned
 # - 2021-07-01a some czech diacritics chars were missing in grep, added
 # - 2021-07-01  minor tweaks, englishized!
@@ -11,7 +12,7 @@
 # - 2020        initial release
 
 #vars:
-VERSION="2022-06-03"
+VERSION="2022-06-04"
 DOMAIN="faktaoklimatu.cz"
 PORT="" #to be set later on
 TMPDIR="/tmp/${DOMAIN}_spellcheck_online_$VERSION"
@@ -43,7 +44,7 @@ function _info() {
 }
 
 function usage {
-  echo "usage:|`basename $0` ARGS
+  echo "usage:|`basename $0` ARGS|v.$VERSION
   |--online| perform on webpages online [default]
   |--local| perform on local build
   -h|--help| help
@@ -52,7 +53,7 @@ function usage {
 
 function confirm() {
     echo -n "$@ [yes/no]: "
-    read -e answer
+    read answer
     for response in y Y yes YES Yes Sure sure SURE OK ok Ok;do
         if [ "_$answer" == "_$response" ];then
             return 0
@@ -107,7 +108,9 @@ test -d "$TMPDIR/$DOMAIN" && {
   _info "most probably already downloaded, using local copy..."
 } || {
   _info "checking up the version on $DOMAIN (might take a while)..." &&
-  for URL in `wget --spider --force-html -r -l10 --reject '*.js,*.css,*.ico,*.txt,*.gif,*.jpg,*.jpeg,*.png,*.mp3,*.pdf,*.tgz,*.flv,*.avi,*.mpeg,*.iso,*.zip,*.svg,*.mp4,*.mov' --ignore-tags=img,link,script --header="Accept: text/html" -D "$DOMAIN" "${DOMAIN}${PORT}" 2>&1 | grep ^Removing | sed 's~\.tmp.*~~' | awk '{print $2}'`; do elinks -dump -no-references "http://$URL" > "./$URL"; done
+  for URL in `wget --spider --force-html -r -l10 --reject '*.js,*.css,*.ico,*.txt,*.gif,*.jpg,*.jpeg,*.png,*.mp3,*.pdf,*.tgz,*.flv,*.avi,*.mpeg,*.iso,*.zip,*.svg,*.mp4,*.mov' --ignore-tags=img,link,script --header="Accept: text/html" -D "$DOMAIN" "${DOMAIN}${PORT}" 2>&1 | grep ^Removing | sed 's~\.tmp.*~~' | awk '{print $2}'`; do
+    elinks -dump -no-references "http://$URL" > "./$URL";
+  done
 } &&
 
 #get all czech-only misspelled words
@@ -121,8 +124,13 @@ for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do
   _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep";
   grep --color=always -RI "[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]$WORD[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}";
   if [ $INTERACTIVE ]; then
-    echo "sleeping for 5 sec before opening elinks to browse on the word..." && sleep 5;
-    elinks "https://duckduckgo.com/?q=${WORD}";
+    #if in tmux, attach in split-window:
+    which tmux >/dev/null && tmux ls >/dev/null 2>&1 && {
+      tmux split-window "elinks \"https://duckduckgo.com/?q=${WORD}\""\;
+    } || {
+      echo "sleeping for 3 sec before opening elinks to browse on the word..." && sleep 3 &&
+      elinks "https://duckduckgo.com/?q=${WORD}";
+    }
     confirm "add the word ${WORD} to dict?" && cd "$SCRIPTDIR" && ./addWord.sh "${WORD}" && _info "added."
     cd "$TMPDIR"
   fi
