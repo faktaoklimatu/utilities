@@ -1,21 +1,24 @@
 #!/bin/bash
 #hnusně zbastlený rychloskript na nalezení nečeských (resp. neslovníkových dle `aspell`) slov na faktaoklimatu.cz
-#crysman (copyleft) 2020-2021
+#crysman (copyleft) 2020
 #
 #changelog:
+# - 2022-06-03  interactive mode added (revising the words and ad-hoc adding to dict), script arguments fine-tuned
 # - 2021-07-01a some czech diacritics chars were missing in grep, added
 # - 2021-07-01  minor tweaks, englishized!
 # - 2021-01-17a dump via elinks instead of lynx, addWord.sh added, search improved, colored output improved, local build support added
 # - 2021-01-17  some checking added, colored output, custom dictionary
-# - initial release
+# - 2020        initial release
 
-#vars:  
-VERSION="2021-01-17a"
+#vars:
+VERSION="2022-06-03"
 DOMAIN="faktaoklimatu.cz"
 PORT="" #to be set later on
 TMPDIR="/tmp/${DOMAIN}_spellcheck_online_$VERSION"
 TMPOUTFILE="misspelled.txt"
 CUSTOMDICT="FoKCustomDict.cs.pws"
+SCRIPTDIR=`pwd`
+INTERACTIVE=
 MISSPELLEDNO=0
 #tput color table
 RED=`tput setaf 1`
@@ -29,48 +32,75 @@ NOCOLOR=`tput sgr0`
 
 function _err() {
   echo "${RED}== ERR: $1, exitting${NOCOLOR}" >&2
-  exit    
+  exit
 }
 
 function _info() {
   echo "${GREEN}== INFO: $1${NOCOLOR}"
   if test -z "$2"; then
     sleep 1
-  fi  
+  fi
 }
 
 function usage {
-  echo "usage: `basename $0` [online*|local]" >&2
+  echo "usage:|`basename $0` ARGS
+  |--online| perform on webpages online [default]
+  |--local| perform on local build
+  -h|--help| help
+  -i|--interactive| interactive mode" | column -t -s "|" >&2
 }
 
+function confirm() {
+    echo -n "$@ [yes/no]: "
+    read -e answer
+    for response in y Y yes YES Yes Sure sure SURE OK ok Ok;do
+        if [ "_$answer" == "_$response" ];then
+            return 0
+        fi
+    done
+    return 1
+}
 
-#args
-if test -z "$1"; then
+#args check and setup
+test -z "$1" && {
+  _info "no arguments provided, printing-out usage and invoking [online] mode"
   usage
-  _info "no argument provided, using $DOMAIN as a domain..."
-elif test "$1" == "online"; then
-  continue
-elif test "$1" == "local"; then
-  TMPDIR="/tmp/${DOMAIN}_spellcheck_local_$VERSION"
-  DOMAIN="localhost"
-  PORT=":4000"
-  test -z "`wget -qO- localhost:4000`" && _err "local webserver seems NOT to be running, check your 'make local' output..."
-else
-  usage
-  _err "bad arguments"
-fi
+}
+
+while [[ "$1" == -* ]]; do
+  case "$1" in
+  -i|--interactive) INTERACTIVE=1
+    _info "interactive mode ON"
+  ;;
+  -h|--help) usage && exit 0;;
+  --online) _info "online mode ON"
+  ;;
+  --local) _info "local mode ON"
+    TMPDIR="/tmp/${DOMAIN}_spellcheck_local_$VERSION"
+    DOMAIN="localhost"
+    PORT=":4000"
+    test -z "`wget -qO- localhost:4000`" && _err "local webserver seems NOT to be running, check your 'make local' output..."
+  ;;
+  --) shift && break;;
+  *)
+    usage
+    _err "bad arguments"
+  ;;
+  esac
+  shift
+done
 
 #check prereqs or die:
-test -w /tmp >/dev/null 2>&1 || _err "unable to write to /tmp"
-which wget >/dev/null 2>&1 || _err "this script requires 'wget'"
-which aspell >/dev/null 2>&1 || _err "this script requires 'aspell'"
-aspell dump dicts | grep ^cs >/dev/null 2>&1 || _err "this script requires 'aspell-cs' package"
-which elinks >/dev/null 2>&1 || _err "this script requires 'elinks'"
+test -w /tmp >/dev/null 2>&1 || _err "unable to write to /tmp (required)"
+which wget >/dev/null 2>&1 || _err "this script requires 'wget' (suggesting 'sudo apt install wget')"
+which aspell >/dev/null 2>&1 || _err "this script requires 'aspell' (suggesting 'sudo apt install aspell')"
+aspell dump dicts | grep ^cs >/dev/null 2>&1 || _err "this script requires 'aspell-cs' package (suggesting 'sudo apt install aspell-cs')"
+which elinks >/dev/null 2>&1 || _err "this script requires 'elinks' (suggesting 'sudo apt install elinks')"
 
 #prepare /tmp...
 mkdir -p "$TMPDIR" &&
 cp -f "$CUSTOMDICT" "$TMPDIR" &&
-cd "$TMPDIR" && 
+cd "$TMPDIR" &&
 
 #get all text pages into faktaoklimatu.cz folder:
 test -d "$TMPDIR/$DOMAIN" && {
@@ -82,14 +112,26 @@ test -d "$TMPDIR/$DOMAIN" && {
 
 #get all czech-only misspelled words
 _info "finding and writing-out misspelled words..."
-for f in `find "./${DOMAIN}${PORT}" -type f`; do cat "$f" | aspell -l cs list; done | sort | uniq | aspell -l en list | aspell --master="./$CUSTOMDICT" -l cs list | tee ${TMPOUTFILE} &&
+for f in `find "./${DOMAIN}${PORT}" -type f`; do
+  cat "$f" | aspell -l cs list;
+done | sort | uniq | aspell -l en list | aspell --master="./$CUSTOMDICT" -l cs list | tee ${TMPOUTFILE} &&
 
 _info "printing-out where the words are located..." &&
-for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep"; grep --color=always -RI "[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]$WORD[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}"; echo ""; let "MISSPELLEDNO=MISSPELLEDNO+1"; done &&
+for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do
+  _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep";
+  grep --color=always -RI "[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]$WORD[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}";
+  if [ $INTERACTIVE ]; then
+    echo "sleeping for 5 sec before opening elinks to browse on the word..." && sleep 5;
+    elinks "https://duckduckgo.com/?q=${WORD}";
+    confirm "add the word ${WORD} to dict?" && cd "$SCRIPTDIR" && ./addWord.sh "${WORD}" && _info "added."
+    cd "$TMPDIR"
+  fi
+  let "MISSPELLEDNO=MISSPELLEDNO+1";
+done &&
 
 #go back to original dir
-cd - >/dev/null &&
+cd "$SCRIPTDIR" &&
 echo "---" &&
 echo "OK, all done. ${RED}$MISSPELLEDNO misspelled words${NOCOLOR} in total" &&
-echo "(copy of misspelled words is in ${MAGENTA}$TMPDIR/$TMPOUTFILE${NOCOLOR})"
+echo "copy of misspelled words is in ${MAGENTA}$TMPDIR/$TMPOUTFILE${NOCOLOR}"
 echo "[optional] use \`${MAGENTA}./`basename $0` 2>&1 | aha > `basename $0`.out.html${NOCOLOR}\` to generate colorized html output"
