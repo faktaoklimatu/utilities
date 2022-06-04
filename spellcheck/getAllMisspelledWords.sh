@@ -3,7 +3,7 @@
 #crysman (copyleft) 2020
 #
 #changelog:
-# - 2022-06-04  tmux usage added (split-window with elinks to have a better workflow)
+# - 2022-06-04a tmux usage added (split-window with elinks to have a better workflow), more verbosity added
 # - 2022-06-03  interactive mode added (revising the words and ad-hoc adding to dict), script arguments fine-tuned
 # - 2021-07-01a some czech diacritics chars were missing in grep, added
 # - 2021-07-01  minor tweaks, englishized!
@@ -12,7 +12,7 @@
 # - 2020        initial release
 
 #vars:
-VERSION="2022-06-04"
+VERSION="2022-06-04a"
 DOMAIN="faktaoklimatu.cz"
 PORT="" #to be set later on
 TMPDIR="/tmp/${DOMAIN}_spellcheck_online_$VERSION"
@@ -21,7 +21,7 @@ CUSTOMDICT="FoKCustomDict.cs.pws"
 SCRIPTDIR=`pwd`
 INTERACTIVE=
 MISSPELLEDNO=0
-#tput color table
+#tput formatting table
 RED=`tput setaf 1`
 GREEN=`tput setaf 2`
 YELLOW=`tput setaf 3`
@@ -29,18 +29,21 @@ BLUE=`tput setaf 4`
 MAGENTA=`tput setaf 5`
 CYAN=`tput setaf 6`
 WHITE=`tput setaf 7`
-NOCOLOR=`tput sgr0`
+BOLD=`tput smso`
+NOBOLD=`tput rmso`
+NOFORMAT=`tput sgr0`
 
 function _err() {
-  echo "${RED}== ERR: $1, exitting${NOCOLOR}" >&2
+  echo "${RED}== ERR: $1, exitting${NOFORMAT}" >&2
   exit
 }
 
 function _info() {
-  echo "${GREEN}== INFO: $1${NOCOLOR}"
-  if test -z "$2"; then
-    sleep 1
-  fi
+##  echo "$@"
+  local str=${1:?string required}
+  local delay=${2:-1} #default $2 to 1
+  echo "${GREEN}== INFO: $str${NOFORMAT}"
+  if [ "$delay" != "--nosleep" ]; then sleep "$delay"; fi
 }
 
 function usage {
@@ -107,9 +110,10 @@ cd "$TMPDIR" &&
 test -d "$TMPDIR/$DOMAIN" && {
   _info "most probably already downloaded, using local copy..."
 } || {
-  _info "checking up the version on $DOMAIN (might take a while)..." &&
+  _info "crawling through $DOMAIN with wget and dump with elinks (might take a while)..." &&
   for URL in `wget --spider --force-html -r -l10 --reject '*.js,*.css,*.ico,*.txt,*.gif,*.jpg,*.jpeg,*.png,*.mp3,*.pdf,*.tgz,*.flv,*.avi,*.mpeg,*.iso,*.zip,*.svg,*.mp4,*.mov' --ignore-tags=img,link,script --header="Accept: text/html" -D "$DOMAIN" "${DOMAIN}${PORT}" 2>&1 | grep ^Removing | sed 's~\.tmp.*~~' | awk '{print $2}'`; do
-    elinks -dump -no-references "http://$URL" > "./$URL";
+    _info "dumping ${MAGENTA}${URL}${NOFORMAT}..." --nosleep &&
+    elinks -dump -no-references -verbose 0 "http://$URL" > "./$URL";
   done
 } &&
 
@@ -121,7 +125,7 @@ done | sort | uniq | aspell -l en list | aspell --master="./$CUSTOMDICT" -l cs l
 
 _info "printing-out where the words are located..." &&
 for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do
-  _info "misspelled: ${NOCOLOR}{${RED}${WORD}${NOCOLOR}}:" "nosleep";
+  _info "misspelled: ${NOFORMAT}{${RED}${WORD}${NOFORMAT}}:" --nosleep;
   grep --color=always -RI "[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]$WORD[^a-zA-ZÁáČčĎďÉéĚěÍíŇňÓóŘřŠšŤťÚúŮůÝýŽž]" --exclude=${TMPOUTFILE} "./${DOMAIN}${PORT}";
   if [ $INTERACTIVE ]; then
     #if in tmux, attach in split-window:
@@ -131,7 +135,7 @@ for WORD in `cat ${TMPDIR}/${TMPOUTFILE}`; do
       echo "sleeping for 3 sec before opening elinks to browse on the word..." && sleep 3 &&
       elinks "https://duckduckgo.com/?q=${WORD}";
     }
-    confirm "add the word ${WORD} to dict?" && cd "$SCRIPTDIR" && ./addWord.sh "${WORD}" && _info "added."
+    confirm "add the word ${YELLOW}${WORD}${NOFORMAT} to dict?" && cd "$SCRIPTDIR" && ./addWord.sh "${WORD}" && _info "word added to dictionary."
     cd "$TMPDIR"
   fi
   let "MISSPELLEDNO=MISSPELLEDNO+1";
@@ -140,6 +144,6 @@ done &&
 #go back to original dir
 cd "$SCRIPTDIR" &&
 echo "---" &&
-echo "OK, all done. ${RED}$MISSPELLEDNO misspelled words${NOCOLOR} in total" &&
-echo "copy of misspelled words is in ${MAGENTA}$TMPDIR/$TMPOUTFILE${NOCOLOR}"
-echo "[optional] use \`${MAGENTA}./`basename $0` 2>&1 | aha > `basename $0`.out.html${NOCOLOR}\` to generate colorized html output"
+echo "OK, all done. ${RED}$MISSPELLEDNO misspelled words${NOFORMAT} in total" &&
+echo "copy of misspelled words is in ${MAGENTA}$TMPDIR/$TMPOUTFILE${NOFORMAT}"
+echo "[optional] use \`${MAGENTA}./`basename $0` 2>&1 | aha > `basename $0`.out.html${NOFORMAT}\` to generate colorized html output"
